@@ -165,11 +165,11 @@ def build_message(n):
         f"<b>{e(n['title'])}</b>",
     ]
     if n["summary"]:
-        lines += ["", f"<blockquote>{e(shorten(n['summary'], SUMMARY_MAX))}</blockquote>"]
+        lines += ["", e(shorten(n["summary"], SUMMARY_MAX))]
     lines += [
         "",
-        f"🗞 {e(n['source'])}",
-        f"🕘 {korean_time(n['published'])}",
+        e(n["source"]),
+        korean_time(n["published"]),
     ]
     return "\n".join(lines)
 
@@ -267,7 +267,7 @@ def main():
         return
 
     for n in sorted(new_items, key=lambda x: x["published"]):
-        send_message(build_message(n), "📖 기사 전문 보기", n["link"])
+        send_message(build_message(n), button_url=n["link"])  # 버튼 없이 사진 미리보기만
         sent.append(n["original"])
 
     save_sent(sent)
