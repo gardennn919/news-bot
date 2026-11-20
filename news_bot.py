@@ -17,6 +17,7 @@ import html
 import json
 import os
 import re
+from difflib import SequenceMatcher
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -168,23 +169,52 @@ def build_message(n):
         lines += ["", e(shorten(n["summary"], SUMMARY_MAX))]
     lines += [
         "",
-        e(n["source"]),
-        korean_time(n["published"]),
+        f"{e(n['source'])} / {korean_time(n['published'])}",
     ]
     return "\n".join(lines)
 
 
+SIMILAR_RATIO = 0.6     # 제목이 이만큼 비슷하면 같은 기사로 보고 한 번만 보냄 (0~1, 높을수록 엄격)
+SIMILAR_HOURS = 24      # 최근 몇 시간 안에 보낸 기사와 비교할지
+
+
 def load_sent():
+    """보낸 기사 기록을 읽습니다. {"links": [...], "titles": [{"t": 제목, "at": 시각}, ...]}"""
     try:
         with open(SENT_FILE, encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return []
+        data = {}
+    if isinstance(data, list):          # 예전 형식(주소 목록)도 읽을 수 있게
+        data = {"links": data}
+    data.setdefault("links", [])
+    data.setdefault("titles", [])
+    return data
 
 
-def save_sent(sent):
+def save_sent(data):
+    limit = datetime.now(timezone.utc) - timedelta(hours=SIMILAR_HOURS)
+    data["links"] = data["links"][-SENT_KEEP:]
+    data["titles"] = [x for x in data["titles"]
+                      if datetime.fromisoformat(x["at"]) >= limit]
     with open(SENT_FILE, "w", encoding="utf-8") as f:
-        json.dump(sent[-SENT_KEEP:], f, ensure_ascii=False, indent=0)
+        json.dump(data, f, ensure_ascii=False, indent=0)
+
+
+def normalize_title(title):
+    """비교용 제목: [속보] 같은 말머리, 따옴표·문장부호·띄어쓰기를 지웁니다."""
+    t = re.sub(r"\[[^\]]*\]|【[^】]*】|<[^>]*>", "", title)
+    t = re.sub(r"[^0-9A-Za-z가-힣]", "", t)
+    return t.lower()
+
+
+def is_similar(a, b):
+    """두 제목(정리된 것)이 같은 기사로 볼 만큼 비슷한지 확인합니다."""
+    if not a or not b:
+        return False
+    if len(a) >= 10 and len(b) >= 10 and (a in b or b in a):
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= SIMILAR_RATIO
 
 
 def fetch_naver_news(word):
@@ -243,11 +273,12 @@ def send_message(text, button_text=None, button_url=None):
 
 
 def main():
-    sent = load_sent()
-    sent_set = set(sent)
+    data = load_sent()
+    sent_set = set(data["links"])
+    recent_titles = [x["t"] for x in data["titles"]]
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
 
-    new_items = []
+    candidates = []
     for n in fetch_naver_news(SEARCH_WORD):
         if n["published"] < cutoff or n["original"] in sent_set:
             continue
@@ -259,19 +290,25 @@ def main():
             print(f"제외(목록에 없는 언론사): {n['original']} - {n['title']}")
             continue
         n["source"], n["category"] = found
-        new_items.append(n)
+        candidates.append(n)
+
+    sent_count = 0
+    now = datetime.now(timezone.utc).isoformat()
+    # 먼저 나온 기사부터 보내고, 비슷한 제목의 기사는 건너뜁니다.
+    for n in sorted(candidates, key=lambda x: x["published"]):
+        data["links"].append(n["original"])
         sent_set.add(n["original"])
-
-    if not new_items:
-        print("새 기사 없음")
-        return
-
-    for n in sorted(new_items, key=lambda x: x["published"]):
+        key = normalize_title(n["title"])
+        if any(is_similar(key, t) for t in recent_titles):
+            print(f"제외(비슷한 기사 이미 보냄): {n['source']} - {n['title']}")
+            continue
         send_message(build_message(n), button_url=n["link"])  # 버튼 없이 사진 미리보기만
-        sent.append(n["original"])
+        recent_titles.append(key)
+        data["titles"].append({"t": key, "at": now})
+        sent_count += 1
 
-    save_sent(sent)
-    print(f"{len(new_items)}건 전송")
+    save_sent(data)
+    print(f"{sent_count}건 전송" if sent_count else "새 기사 없음")
 
 
 if __name__ == "__main__":
