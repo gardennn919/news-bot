@@ -160,7 +160,7 @@ def build_message(n):
     """텔레그램에 보낼 메시지 모양을 만듭니다."""
     e = html.escape
     lines = [
-        "🔔 <b>이광재 의원 새 소식</b>",
+        "🔔 <b>이광재 의원 새 뉴스</b>",
         "",
         f"<b>{e(n['title'])}</b>",
     ]
@@ -168,7 +168,7 @@ def build_message(n):
         lines += ["", f"<blockquote>{e(shorten(n['summary'], SUMMARY_MAX))}</blockquote>"]
     lines += [
         "",
-        f"🗞 {e(n['source'])}  <i>{e(n['category'])}</i>",
+        f"🗞 {e(n['source'])}",
         f"🕘 {korean_time(n['published'])}",
     ]
     return "\n".join(lines)
