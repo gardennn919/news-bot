@@ -176,6 +176,7 @@ def build_message(n):
 
 SIMILAR_RATIO = 0.6     # 제목이 이만큼 비슷하면 같은 기사로 보고 한 번만 보냄 (0~1, 높을수록 엄격)
 SIMILAR_HOURS = 24      # 최근 몇 시간 안에 보낸 기사와 비교할지
+SAME_WORDS = 8          # 제목·본문에서 연속된 단어 이만큼이 똑같으면 같은 기사로 보고 거름
 
 
 def load_sent():
@@ -189,6 +190,7 @@ def load_sent():
         data = {"links": data}
     data.setdefault("links", [])
     data.setdefault("titles", [])
+    data.setdefault("chunks", [])
     return data
 
 
@@ -196,6 +198,8 @@ def save_sent(data):
     limit = datetime.now(timezone.utc) - timedelta(hours=SIMILAR_HOURS)
     data["links"] = data["links"][-SENT_KEEP:]
     data["titles"] = [x for x in data["titles"]
+                      if datetime.fromisoformat(x["at"]) >= limit]
+    data["chunks"] = [x for x in data["chunks"]
                       if datetime.fromisoformat(x["at"]) >= limit]
     with open(SENT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=0)
@@ -206,6 +210,23 @@ def normalize_title(title):
     t = re.sub(r"\[[^\]]*\]|【[^】]*】|<[^>]*>", "", title)
     t = re.sub(r"[^0-9A-Za-z가-힣]", "", t)
     return t.lower()
+
+
+def word_chunks(n):
+    """제목과 본문 각각에서 연속된 SAME_WORDS개 단어 묶음들을 만듭니다."""
+    chunks = set()
+    for part, is_summary in ((n["title"], False), (n["summary"], True)):
+        tokens = part.split()
+        if is_summary and tokens and re.search(r"(\.\.\.|…)$", tokens[-1]):
+            tokens = tokens[:-1]        # 요약 끝에 잘린 단어는 비교에서 뺌
+        words = []
+        for w in tokens:
+            w = re.sub(r"^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$", "", w)  # 앞뒤 따옴표·문장부호 제거
+            if w:
+                words.append(w)
+        for i in range(len(words) - SAME_WORDS + 1):
+            chunks.add(" ".join(words[i:i + SAME_WORDS]))
+    return chunks
 
 
 def is_similar(a, b):
@@ -276,6 +297,7 @@ def main():
     data = load_sent()
     sent_set = set(data["links"])
     recent_titles = [x["t"] for x in data["titles"]]
+    recent_chunks = {c for x in data["chunks"] for c in x["c"]}
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
 
     candidates = []
@@ -302,9 +324,15 @@ def main():
         if any(is_similar(key, t) for t in recent_titles):
             print(f"제외(비슷한 기사 이미 보냄): {n['source']} - {n['title']}")
             continue
+        chunks = word_chunks(n)
+        if chunks & recent_chunks:
+            print(f"제외(연속 {SAME_WORDS}단어 일치): {n['source']} - {n['title']}")
+            continue
         send_message(build_message(n), button_url=n["link"])  # 버튼 없이 사진 미리보기만
         recent_titles.append(key)
         data["titles"].append({"t": key, "at": now})
+        recent_chunks |= chunks
+        data["chunks"].append({"c": sorted(chunks), "at": now})
         sent_count += 1
 
     save_sent(data)
