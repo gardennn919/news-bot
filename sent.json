@@ -1,4 +1,5 @@
-[
+{
+"links": [
 "https://news.google.com/rss/articles/CBMiZ0FVX3lxTE5kY3FHMF9KY2VDdlBzRkozQ3F5YXZFSGtieGVYS3lIY0R2alNYd0ZLMUxyYTA0NUs3NjRwVGR4Y2FXLUwtN21xam5tS1E5VXFKM3FsNzM5ZmlvZTl2dnFBd3o1MVF3Xzg?oc=5",
 "https://www.kmib.co.kr/article/20261119502483",
 "https://www.newsis.com/view/NISI20261120_0021539885",
@@ -20,4 +21,6 @@
 "https://www.yna.co.kr/view/AKR20261120082700001?input=1195m",
 "https://www.joongang.co.kr/article/25480442",
 "https://biz.sbs.co.kr/article_hub/20000347831?division=NAVER"
-]
+],
+"titles": []
+}
