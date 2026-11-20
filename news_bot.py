@@ -222,8 +222,16 @@ def send_message(text, button_text=None, button_url=None):
         "chat_id": CHAT_ID,
         "text": text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": "true",
     }
+    if button_url:
+        # 기사 미리보기(사진·제목·요약 카드)를 메시지에 붙입니다.
+        payload["link_preview_options"] = json.dumps({
+            "url": button_url,
+            "prefer_large_media": True,   # 사진을 크게
+            "show_above_text": False,     # 미리보기는 글 아래에
+        })
+    else:
+        payload["disable_web_page_preview"] = "true"
     if button_text and button_url:
         # 메시지 아래에 누르면 기사로 이동하는 버튼을 붙입니다.
         payload["reply_markup"] = json.dumps({
